@@ -26,6 +26,8 @@
 #include "Settings.h"
 #include<pangolin/pangolin.h>
 
+#include <opencv2/core.hpp>
+#include <string>
 #include<mutex>
 
 namespace ORB_SLAM3
@@ -44,6 +46,10 @@ public:
     Atlas* mpAtlas;
 
     void DrawMapPoints();
+    void AddDenseMapPoints(const std::vector<cv::Point3f>& points,
+                           const std::vector<cv::Vec3b>& colors);
+    void DrawDenseMapPoints();
+    bool SaveDenseMapPointsPLY(const std::string& filename);
     void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const bool bDrawInertialGraph, const bool bDrawOptLba);
     void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc);
     void SetCurrentCameraPose(const Sophus::SE3f &Tcw);
@@ -72,6 +78,15 @@ private:
                                 {1.0f, 1.0f, 0.0f},
                                 {0.0f, 1.0f, 1.0f}};
 
+    struct DenseMapPoint
+    {
+        cv::Point3f position;
+        cv::Vec3b color;
+    };
+
+    std::mutex mMutexDensePoints;
+    std::vector<DenseMapPoint> mDenseMapPoints;
+    bool mbDensePointLimitReported = false;
 };
 
 } //namespace ORB_SLAM

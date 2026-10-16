@@ -246,6 +246,19 @@ void System::RunViewer()  {
     }
 }
 
+void System::AddDenseMapPoints(const vector<cv::Point3f>& points,
+                               const vector<cv::Vec3b>& colors)
+{
+    if (mpMapDrawer != nullptr)
+        mpMapDrawer->AddDenseMapPoints(points, colors);
+}
+
+bool System::SaveDenseMapPointsPLY(const string& filename)
+{
+    return mpMapDrawer != nullptr &&
+           mpMapDrawer->SaveDenseMapPointsPLY(filename);
+}
+
 Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
 {
     if(mSensor!=STEREO && mSensor!=IMU_STEREO)
@@ -521,6 +534,8 @@ void System::Shutdown()
 {
     {
         unique_lock<mutex> lock(mMutexReset);
+        if(mbShutDown)
+            return;
         mbShutDown = true;
     }
 
@@ -536,19 +551,16 @@ void System::Shutdown()
     }*/
 
     // Wait until all thread have effectively stopped
-    /*while(!mpLocalMapper->isFinished() || !mpLoopCloser->isFinished() || mpLoopCloser->isRunningGBA())
+    while(!mpLocalMapper->isFinished() || !mpLoopCloser->isFinished() ||
+          mpLoopCloser->isRunningGBA())
     {
-        if(!mpLocalMapper->isFinished())
-            cout << "mpLocalMapper is not finished" << endl;*/
-        /*if(!mpLoopCloser->isFinished())
-            cout << "mpLoopCloser is not finished" << endl;
-        if(mpLoopCloser->isRunningGBA()){
-            cout << "mpLoopCloser is running GBA" << endl;
-            cout << "break anyway..." << endl;
-            break;
-        }*/
-        /*usleep(5000);
-    }*/
+        usleep(5000);
+    }
+
+    if(mptLocalMapping && mptLocalMapping->joinable())
+        mptLocalMapping->join();
+    if(mptLoopClosing && mptLoopClosing->joinable())
+        mptLoopClosing->join();
 
     if(!mStrSaveAtlasToFile.empty())
     {
@@ -1551,4 +1563,3 @@ string System::CalculateCheckSum(string filename, int type)
 }
 
 } //namespace ORB_SLAM
-

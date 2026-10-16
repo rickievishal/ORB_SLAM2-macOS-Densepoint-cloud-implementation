@@ -69,10 +69,20 @@ set_target_properties(${PROJECT_NAME}
 
 # TODO: Use target_find_dependencies complex mode once the new version of aminya/project_options is released
 find_package(Boost CONFIG REQUIRED COMPONENTS serialization)
-find_package(Eigen3 3.1.0 CONFIG REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
 find_package(OpenCV 4.4 CONFIG REQUIRED)
 find_package(OpenSSL CONFIG REQUIRED)
 find_package(Pangolin CONFIG REQUIRED)
+if(APPLE AND TARGET pango_opengl)
+  find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+  get_target_property(PANGOLIN_OPENGL_LIBRARIES
+    pango_opengl INTERFACE_LINK_LIBRARIES)
+  list(FILTER PANGOLIN_OPENGL_LIBRARIES EXCLUDE REGEX
+    "^(/usr/X11R6|/opt/X11)/lib/libGL(U)?\\.dylib$")
+  list(APPEND PANGOLIN_OPENGL_LIBRARIES "${OPENGL_FRAMEWORK}")
+  set_property(TARGET pango_opengl PROPERTY INTERFACE_LINK_LIBRARIES
+    "${PANGOLIN_OPENGL_LIBRARIES}")
+endif()
 find_package(realsense2)
 
 add_subdirectory(Thirdparty)
@@ -153,9 +163,10 @@ endif()
 # Monocular examples
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Examples/Monocular)
 
-add_executable(mono_tum
-  Examples/Monocular/mono_tum.cc)
-target_link_libraries(mono_tum ${PROJECT_NAME})
+add_executable(mono_webcam
+  Examples/Monocular/mono_webcam.cc
+  Examples/Monocular/DenseMapper.cc)
+target_link_libraries(mono_webcam ${PROJECT_NAME})
 
 add_executable(mono_kitti
   Examples/Monocular/mono_kitti.cc)

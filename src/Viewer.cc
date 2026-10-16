@@ -19,9 +19,9 @@
 
 #include "Viewer.h"
 #include <pangolin/pangolin.h>
+#include <opencv2/highgui.hpp>
 
 #include <mutex>
-#include <memory>
 
 namespace ORB_SLAM3
 {
@@ -165,7 +165,19 @@ void Viewer::Run()
     mbFinished = false;
     mbStopped = false;
 
-    pangolin::CreateWindowAndBind("ORB-SLAM3: Map Viewer",1024,768);
+    pangolin::WindowInterface& window =
+        pangolin::CreateWindowAndBind("ORB-SLAM3: Map Viewer",1024,768);
+    pangolin::BindToContext("ORB-SLAM3: Map Viewer");
+    window.MakeCurrent();
+    const GLubyte* glVersion = glGetString(GL_VERSION);
+    if (!glVersion)
+    {
+        std::cerr << "[Viewer] No current OpenGL context; closing viewer."
+                  << std::endl;
+        SetFinish();
+        return;
+    }
+    std::cout << "[Viewer] OpenGL " << glVersion << std::endl;
 
     // 3D Mouse handler requires depth testing to be enabled
     glEnable(GL_DEPTH_TEST);
@@ -180,6 +192,7 @@ void Viewer::Run()
     pangolin::Var<bool> menuTopView("menu.Top View",false,false);
     // pangolin::Var<bool> menuSideView("menu.Side View",false,false);
     pangolin::Var<bool> menuShowPoints("menu.Show Points",true,true);
+    pangolin::Var<bool> menuShowDensePoints("menu.Show Dense Points",true,true);
     pangolin::Var<bool> menuShowKeyFrames("menu.Show KeyFrames",true,true);
     pangolin::Var<bool> menuShowGraph("menu.Show Graph",false,true);
     pangolin::Var<bool> menuShowInertialGraph("menu.Show Inertial Graph",true,true);
@@ -201,20 +214,12 @@ void Viewer::Run()
             .SetBounds(0.0, 1.0, pangolin::Attach::Pix(175), 1.0, -1024.0f/768.0f)
             .SetHandler(new pangolin::Handler3D(s_cam));
 
-    pangolin::View& d_img1 = pangolin::Display("img1")
-        .SetAspect(640.0f/480.0f);
-
-    pangolin::Display("multi")
-        .SetBounds(0.0, 1.0, 0.0, 1.0)
-        .SetLayout(pangolin::LayoutEqual)
-        .AddDisplay(d_cam)
-        .AddDisplay(d_img1);
-
     pangolin::OpenGlMatrix Twc, Twr;
     Twc.SetIdentity();
     pangolin::OpenGlMatrix Ow; // Oriented with g in the z axis
     Ow.SetIdentity();
-    // cv::namedWindow("ORB-SLAM3: Current Frame");
+    const string frameWindowName = "ORB-SLAM3: Current Frame";
+    cv::namedWindow(frameWindowName, cv::WINDOW_NORMAL);
 
     bool bFollow = true;
     bool bLocalizationMode = false;
@@ -227,8 +232,6 @@ void Viewer::Run()
     }
 
     float trackedImageScale = mpTracker->GetImageScale();
-
-    std::unique_ptr<pangolin::GlTexture> imageTexture(nullptr);
 
     cout << "Starting the Viewer" << endl;
     while(!pangolin::ShouldQuit())
@@ -319,44 +322,79 @@ void Viewer::Run()
         cv::Mat toShow;
         cv::Mat im = mpFrameDrawer->DrawFrame(trackedImageScale);
 
-        if(both){
-            cv::Mat imRight = mpFrameDrawer->DrawRightFrame(trackedImageScale);
-            cv::hconcat(im,imRight,toShow);
-        }
-        else{
+        if (both) {
+            cv::Mat imRight =
+                mpFrameDrawer->DrawRightFrame(trackedImageScale);
+            cv::hconcat(im, imRight, toShow);
+        } else {
             toShow = im;
         }
 
-        if(mImageViewerScale != 1.f)
+        if (toShow.empty())
         {
-            int width = toShow.cols * mImageViewerScale;
-            int height = toShow.rows * mImageViewerScale;
+            const int pressedKey = cv::waitKey(1);
+            pangolin::FinishFrame();
+            if (pressedKey == 27 || pressedKey == 'q' || pressedKey == 'Q' ||
+                cv::getWindowProperty(frameWindowName,
+                                      cv::WND_PROP_VISIBLE) < 1.0)
+                break;
+            continue;
+        }
+
+        if (mImageViewerScale != 1.f) {
+            int width = static_cast<int>(
+                toShow.cols * mImageViewerScale);
+            int height = static_cast<int>(
+                toShow.rows * mImageViewerScale);
+
             cv::resize(toShow, toShow, cv::Size(width, height));
         }
 
-        if (not imageTexture) {
-            imageTexture = std::unique_ptr<pangolin::GlTexture>(
-                new pangolin::GlTexture(toShow.cols, toShow.rows, GL_RGB, false, 0, GL_RGB,GL_UNSIGNED_BYTE)
-            );
+        if (toShow.channels() == 1) {
+            cv::cvtColor(toShow, toShow, cv::COLOR_GRAY2BGR);
+        } else if (toShow.channels() == 4) {
+            cv::cvtColor(toShow, toShow, cv::COLOR_BGRA2BGR);
+        } else if (toShow.channels() != 3) {
+            std::cerr << "[Viewer] Unsupported channel count: "
+                      << toShow.channels() << std::endl;
+            pangolin::FinishFrame();
+            continue;
         }
 
+        if (!toShow.isContinuous()) {
+            toShow = toShow.clone();
+        }
+
+        cv::imshow(frameWindowName, toShow);
+        const int pressedKey = cv::waitKey(1);
+
+        glClearColor(1.0f,1.0f,1.0f,1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        imageTexture->Upload(toShow.data, GL_RGB, GL_UNSIGNED_BYTE);
-
-        d_img1.Activate();
-        glColor4f(1.0f,1.0f,1.0f,1.0f);
-        imageTexture->RenderToViewport(true);
-
         d_cam.Activate(s_cam);
-        glClearColor(1.0f,1.0f,1.0f,1.0f);
         mpMapDrawer->DrawCurrentCamera(Twc);
-        if(menuShowKeyFrames || menuShowGraph || menuShowInertialGraph || menuShowOptLba)
-            mpMapDrawer->DrawKeyFrames(menuShowKeyFrames,menuShowGraph, menuShowInertialGraph, menuShowOptLba);
-        if(menuShowPoints)
-            mpMapDrawer->DrawMapPoints();
+        Map* currentMap = mpMapDrawer->mpAtlas->GetCurrentMap();
+        if(currentMap)
+        {
+            std::unique_lock<std::mutex> mapLock(
+                currentMap->mMutexMapUpdate, std::try_to_lock);
+            if(mapLock.owns_lock() &&
+               mpMapDrawer->mpAtlas->GetCurrentMap() == currentMap)
+            {
+                if(menuShowKeyFrames || menuShowGraph || menuShowInertialGraph || menuShowOptLba)
+                    mpMapDrawer->DrawKeyFrames(menuShowKeyFrames,menuShowGraph, menuShowInertialGraph, menuShowOptLba);
+                if(menuShowPoints)
+                    mpMapDrawer->DrawMapPoints();
+                if(menuShowDensePoints)
+                    mpMapDrawer->DrawDenseMapPoints();
+            }
+        }
 
         pangolin::FinishFrame();
+
+        if (pressedKey == 27 || pressedKey == 'q' || pressedKey == 'Q' ||
+            cv::getWindowProperty(frameWindowName, cv::WND_PROP_VISIBLE) < 1.0)
+            break;
 
         if(menuReset)
         {
@@ -400,6 +438,7 @@ void Viewer::Run()
             break;
     }
 
+    cv::destroyWindow(frameWindowName);
     SetFinish();
 }
 

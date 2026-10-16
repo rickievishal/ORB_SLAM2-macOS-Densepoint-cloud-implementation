@@ -1907,7 +1907,7 @@ void Tracking::Track()
             MonocularInitialization();
         }
 
-        //mpFrameDrawer->Update(this);
+        mpFrameDrawer->Update(this);
 
         if(mState!=OK) // If rightly initialized, mState=OK
         {
@@ -2453,7 +2453,6 @@ void Tracking::MonocularInitialization()
         // Set Reference Frame
         if(mCurrentFrame.mvKeys.size()>100)
         {
-
             mInitialFrame = Frame(mCurrentFrame);
             mLastFrame = Frame(mCurrentFrame);
             mvbPrevMatched.resize(mCurrentFrame.mvKeysUn.size());
@@ -2501,8 +2500,30 @@ void Tracking::MonocularInitialization()
         Sophus::SE3f Tcw;
         vector<bool> vbTriangulated; // Triangulated Correspondences (mvIniMatches)
 
-        if(mpCamera->ReconstructWithTwoViews(mInitialFrame.mvKeysUn,mCurrentFrame.mvKeysUn,mvIniMatches,Tcw,mvIniP3D,vbTriangulated))
+        bool reconstructed = mpCamera->ReconstructWithTwoViews(
+            mInitialFrame.mvKeysUn,
+            mCurrentFrame.mvKeysUn,
+            mvIniMatches,
+            Tcw,
+            mvIniP3D,
+            vbTriangulated
+        );
+
+        std::cout << "[MONO INIT] Two-view reconstruction: "
+                  << (reconstructed ? "SUCCESS" : "FAILED")
+                  << std::endl;
+
+        if(reconstructed)
         {
+            int triangulatedCount = 0;
+            for(size_t i = 0; i < mvIniMatches.size(); i++)
+            {
+                if(mvIniMatches[i] >= 0 && vbTriangulated[i])
+                    triangulatedCount++;
+            }
+
+            std::cout << "[MONO INIT] Triangulated points: "
+                      << triangulatedCount << std::endl;
             for(size_t i=0, iend=mvIniMatches.size(); i<iend;i++)
             {
                 if(mvIniMatches[i]>=0 && !vbTriangulated[i])
@@ -2585,6 +2606,11 @@ void Tracking::CreateInitialMapMonocular()
         invMedianDepth = 4.0f/medianDepth; // 4.0f
     else
         invMedianDepth = 1.0f/medianDepth;
+
+    std::cout << "[MONO INIT] Median depth: " << medianDepth
+              << ", tracked map points: "
+              << pKFcur->TrackedMapPoints(1)
+              << std::endl;
 
     if(medianDepth<0 || pKFcur->TrackedMapPoints(1)<50) // TODO Check, originally 100 tracks
     {

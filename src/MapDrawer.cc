@@ -20,6 +20,8 @@
 #include "MapPoint.h"
 #include "KeyFrame.h"
 #include <pangolin/pangolin.h>
+#include <fstream>
+#include <iomanip>
 #include <mutex>
 
 namespace ORB_SLAM3
@@ -173,6 +175,83 @@ void MapDrawer::DrawMapPoints()
     }
 
     glEnd();
+}
+
+void MapDrawer::AddDenseMapPoints(
+    const vector<cv::Point3f>& points,
+    const vector<cv::Vec3b>& colors)
+{
+    const size_t count = std::min(points.size(), colors.size());
+    if (count == 0)
+        return;
+
+    const size_t maximumPointCount = 500000;
+    lock_guard<mutex> lock(mMutexDensePoints);
+    const size_t available =
+        maximumPointCount - std::min(maximumPointCount, mDenseMapPoints.size());
+    const size_t accepted = std::min(available, count);
+    mDenseMapPoints.reserve(mDenseMapPoints.size() + accepted);
+    for (size_t i = 0; i < accepted; ++i)
+        mDenseMapPoints.push_back({points[i], colors[i]});
+    if (accepted < count && !mbDensePointLimitReported)
+    {
+        cerr << "[Dense map] Reached the 500000-point viewer limit."
+             << endl;
+        mbDensePointLimitReported = true;
+    }
+}
+
+void MapDrawer::DrawDenseMapPoints()
+{
+    lock_guard<mutex> lock(mMutexDensePoints);
+    if (mDenseMapPoints.empty())
+        return;
+
+    glPointSize(2.0f);
+    glBegin(GL_POINTS);
+    for (const DenseMapPoint& point : mDenseMapPoints)
+    {
+        glColor3ub(point.color[2], point.color[1], point.color[0]);
+        glVertex3f(point.position.x, point.position.y, point.position.z);
+    }
+    glEnd();
+}
+
+bool MapDrawer::SaveDenseMapPointsPLY(const string& filename)
+{
+    vector<DenseMapPoint> points;
+    {
+        lock_guard<mutex> lock(mMutexDensePoints);
+        points = mDenseMapPoints;
+    }
+    if (points.empty())
+        return false;
+
+    ofstream output(filename.c_str(), ios::out | ios::trunc);
+    if (!output.is_open())
+        return false;
+
+    output << "ply\n"
+           << "format ascii 1.0\n"
+           << "element vertex " << points.size() << "\n"
+           << "property float x\n"
+           << "property float y\n"
+           << "property float z\n"
+           << "property uchar red\n"
+           << "property uchar green\n"
+           << "property uchar blue\n"
+           << "end_header\n"
+           << fixed << setprecision(6);
+    for (const DenseMapPoint& point : points)
+    {
+        output << point.position.x << ' '
+               << point.position.y << ' '
+               << point.position.z << ' '
+               << static_cast<int>(point.color[2]) << ' '
+               << static_cast<int>(point.color[1]) << ' '
+               << static_cast<int>(point.color[0]) << '\n';
+    }
+    return output.good();
 }
 
 void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const bool bDrawInertialGraph, const bool bDrawOptLba)
