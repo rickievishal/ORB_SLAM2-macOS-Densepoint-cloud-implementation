@@ -62,6 +62,7 @@ int main(int argc, char **argv)
 
     std::thread cameraThread([&camera, &SLAM, &denseMapper]() {
         cv::Mat frame;
+        unsigned long int currentMapId = SLAM.GetCurrentMapId();
 
         while (running.load()) {
             if (!camera.read(frame) || frame.empty()) {
@@ -77,6 +78,15 @@ int main(int argc, char **argv)
                 ).count();
 
             const Sophus::SE3f Tcw = SLAM.TrackMonocular(frame, timestamp);
+            const unsigned long int mapId = SLAM.GetCurrentMapId();
+            if (mapId != currentMapId) {
+                denseMapper->ResetReference();
+                SLAM.ClearDenseMapPoints();
+                currentMapId = mapId;
+                std::cout << "[Dense map] Cleared points after SLAM map reset."
+                          << std::endl;
+            }
+
             if (SLAM.GetTrackingState() == ORB_SLAM3::Tracking::OK) {
                 std::vector<cv::Point3f> densePoints;
                 std::vector<cv::Vec3b> denseColors;

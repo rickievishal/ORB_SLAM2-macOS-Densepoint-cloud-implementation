@@ -253,10 +253,22 @@ void System::AddDenseMapPoints(const vector<cv::Point3f>& points,
         mpMapDrawer->AddDenseMapPoints(points, colors);
 }
 
+void System::ClearDenseMapPoints()
+{
+    if (mpMapDrawer != nullptr)
+        mpMapDrawer->ClearDenseMapPoints();
+}
+
 bool System::SaveDenseMapPointsPLY(const string& filename)
 {
     return mpMapDrawer != nullptr &&
            mpMapDrawer->SaveDenseMapPointsPLY(filename);
+}
+
+unsigned long int System::GetCurrentMapId()
+{
+    Map* currentMap = mpAtlas->GetCurrentMap();
+    return currentMap ? currentMap->GetId() : 0;
 }
 
 Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)

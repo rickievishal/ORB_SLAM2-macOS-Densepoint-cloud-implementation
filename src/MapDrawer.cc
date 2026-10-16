@@ -201,6 +201,13 @@ void MapDrawer::AddDenseMapPoints(
     }
 }
 
+void MapDrawer::ClearDenseMapPoints()
+{
+    lock_guard<mutex> lock(mMutexDensePoints);
+    mDenseMapPoints.clear();
+    mbDensePointLimitReported = false;
+}
+
 void MapDrawer::DrawDenseMapPoints()
 {
     lock_guard<mutex> lock(mMutexDensePoints);

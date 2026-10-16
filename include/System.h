@@ -195,7 +195,9 @@ public:
     void RunViewer();
     void AddDenseMapPoints(const std::vector<cv::Point3f>& points,
                            const std::vector<cv::Vec3b>& colors);
+    void ClearDenseMapPoints();
     bool SaveDenseMapPointsPLY(const string& filename);
+    unsigned long int GetCurrentMapId();
 
 private:
 

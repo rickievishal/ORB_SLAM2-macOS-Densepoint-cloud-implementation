@@ -48,6 +48,7 @@ public:
     void DrawMapPoints();
     void AddDenseMapPoints(const std::vector<cv::Point3f>& points,
                            const std::vector<cv::Vec3b>& colors);
+    void ClearDenseMapPoints();
     void DrawDenseMapPoints();
     bool SaveDenseMapPointsPLY(const std::string& filename);
     void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const bool bDrawInertialGraph, const bool bDrawOptLba);
